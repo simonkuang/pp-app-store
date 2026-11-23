@@ -73,7 +73,6 @@ app-store-pp-cli compare <APP_1> <APP_2> --country cn --agent
 * **衍生逻辑**：拉取竞品评论，专门过滤出 `rating <= 2` 的低星差评，聚类提取用户反复抱怨的“核心痛点”、“收费太黑”与“未满足功能请求”。
 * **执行命令**：
   ```bash
-  # 直接调用技能内置扩展脚本：
   python3 ~/.agents/skills/pp-app-store/scripts/review_miner.py <APP_ID> --country cn --limit 100 --max-rating 2
   ```
 * **产出物**：
@@ -87,7 +86,6 @@ app-store-pp-cli compare <APP_1> <APP_2> --country cn --agent
 * **衍生逻辑**：抓取目标应用的 Top 10 内购项，自动解析周期性订阅（周/月/年）与非消耗型买断（Lifetime），计算年费折扣率与客单价中位数。
 * **执行命令**：
   ```bash
-  # 直接调用技能内置扩展脚本：
   python3 ~/.agents/skills/pp-app-store/scripts/iap_analyzer.py <APP_ID> --country cn
   ```
 * **产出物**：
@@ -101,7 +99,6 @@ app-store-pp-cli compare <APP_1> <APP_2> --country cn --agent
 * **衍生逻辑**：输入核心种子词，自动通过 `suggest` 获取高搜索意图联想词，同时扫描前 10 名竞品的主副标题高频词，组装出符合苹果字符硬约束的推荐方案。
 * **执行命令**：
   ```bash
-  # 直接调用技能内置扩展脚本：
   python3 ~/.agents/skills/pp-app-store/scripts/aso_builder.py "<核心词>" --country cn --brand "<品牌名>"
   ```
 * **产出物**：
@@ -128,7 +125,6 @@ app-store-pp-cli compare <APP_1> <APP_2> --country cn --agent
 * **衍生逻辑**：横向比对目标应用在中国区 (`cn`)、美国区 (`us`)、日本区 (`jp`) 的内购定价与评价热度，测算各地区实际客单价。
 * **执行命令**：
   ```bash
-  # 对比各地区定价
   app-store-pp-cli iap <APP_ID> --country cn --agent
   app-store-pp-cli iap <APP_ID> --country us --agent
   app-store-pp-cli iap <APP_ID> --country jp --agent
@@ -136,12 +132,41 @@ app-store-pp-cli compare <APP_1> <APP_2> --country cn --agent
 
 ---
 
-## 四、Agent 执行交付规范
+## 四、苹果公共接口防封与速率控制（Rate Limiting 经验指南）
+
+> [!IMPORTANT]
+> Apple App Store 的免鉴权接口（`itunes.apple.com` 与 `apps.apple.com`）具有严格的频控机制与边缘防护规则。使用者与 Agent **必须严格遵守速率经验规则**，防止触发 IP 临时封禁（HTTP 403 / 429）。
+
+### 1. 苹果官方接口真实经验阈值 (Community Benchmarks)
+* **iTunes Search & Lookup 接口**：
+  - **安全速率**：单 IP **≤ 20 ~ 30 次 / 分钟**（平均每请求间隔 **≥ 2 秒**）。
+  - **突发上限**：瞬间并发 > 15 次请求极易触发 `HTTP 403 Forbidden` 或 `HTTP 429 Too Many Requests`，严重者会导致该 IP 遭遇数小时至 24 小时的临时封禁。
+* **Customer Reviews 评论 RSS 接口**：
+  - 频控比 Search 更严格；且单个 App 翻页最多有效拉取约 10 页（约 500 条），并发频繁翻页会直接被服务端截断连接。
+* **Web 端应用详情爬取 (`apps.apple.com`)**：
+  - 受 Apple / Akamai 边缘网络防火墙保护，高频连击会返回 HTML 错误页面或空响应。
+
+### 2. 底层 CLI 的速率控制机制及其边界
+* `app-store-pp-cli` 内部已具备速率调节机制：
+  - 拥有全局参数 `--rate-limit <float>`（默认 `auto`，即根据服务端响应头速率进行调节；也可传 `0.5` 即 2 秒 1 次）。
+  - 内部集成了针对 HTTP 429 的 `Retry-After` 延迟退避重试（Backoff）。
+* **核心局限**：CLI 的限频仅作用于**单个进程执行周期内**（例如单次 `compare`、单次 `reviews` 翻页）。如果上层 Agent 在循环中连续独立启动多个 CLI 进程，各个独立进程之间**不存在跨进程的共享频控锁**！
+
+### 3. Agent 层的防限流铁律 (Best Practices for Agents)
+1. **严禁并发突发**：绝对不要在脚本或循环中使用多线程/并发池并发轰炸苹果接口，所有 App Store 查询**必须单线程串行执行**。
+2. **多步操作强制平滑休眠**：在连续查询多个 App 或串联执行多个步骤（如先搜后查）时，每两次独立 CLI 调用之间**必须强制等待 1.5 ~ 2 秒**（脚本中已通过 `--delay 1.5` 与 `time.sleep` 默认集成）。
+3. **推荐固定限频参数**：在执行多条抓取命令时，建议显式追加 `--rate-limit 0.5`，使单次进程内的请求频率控制在 2 秒 1 次。
+4. **优先读取 SQLite 缓存**：同一款 App 在同一天内若已抓取过，CLI 会自动保存在 `~/.local/data/pp-app-store.db`，Agent 应避免针对同一个目标在短时间内反复调用实时接口。
+5. **遭遇 429 时的退避策略**：一旦检测到 429 报错，切勿立即重试；应采用指数退避（首次等待 5 秒，二次等待 10 秒，最多重试 3 次）。
+
+---
+
+## 五、Agent 执行交付规范
 
 当用户询问 App Store 竞品调研或赛道分析时，Agent 应遵循以下流程产出深度分析报告：
 
 1. **确定目标**：通过 `search-store` 确认目标产品的 `appId`。
-2. **多维数据组合调用**：
+2. **多维数据组合调用（遵守频控）**：
    - 基础画像：`app --agent` + `ratings --histogram --agent`
    - 商业化梯队：`iap_analyzer.py` 或 `iap --agent`
    - 差评寻宝：`review_miner.py` 或 `reviews --agent`

@@ -4,12 +4,14 @@
 """
 独立开发者 ASO 黄金标题与关键词矩阵构建器 (ASO Builder)
 基于 App Store 搜索联想与竞品标题拆解，生成符合 30 字符硬约束的爆款标题方案。
+内置跨请求节奏控制 (Pacing)，避免短时间内突发请求触发苹果风控。
 """
 
 import sys
 import json
 import subprocess
 import argparse
+import time
 import re
 from collections import Counter
 
@@ -21,13 +23,18 @@ def run_command(cmd):
         sys.stderr.write(f"Command failed: {' '.join(cmd)}\n{e.stderr}\n")
         return None
 
-def build_aso_matrix(seed_keyword, country="cn", brand_name=""):
+def build_aso_matrix(seed_keyword, country="cn", brand_name="", delay_sec=1.5, rate_limit="0.5"):
     print(f"\n=======================================================")
     print(f"🔍 ASO 关键词矩阵与标题生成器 (种子词: '{seed_keyword}' | 市场: {country})")
     print(f"=======================================================\n")
 
     # 1. 抓取联想词 (Suggest)
-    cmd_suggest = ["app-store-pp-cli", "suggest", seed_keyword, "--country", country, "--agent"]
+    cmd_suggest = [
+        "app-store-pp-cli", "suggest", seed_keyword,
+        "--country", country,
+        "--rate-limit", str(rate_limit),
+        "--agent"
+    ]
     out_suggest = run_command(cmd_suggest)
     suggestions = []
     if out_suggest:
@@ -48,8 +55,18 @@ def build_aso_matrix(seed_keyword, country="cn", brand_name=""):
         print("   (未获取到联想词)")
     print("")
 
+    # 速率平滑控制：多步抓取之间强制沉睡，遵守苹果经验速率
+    if delay_sec > 0:
+        time.sleep(delay_sec)
+
     # 2. 搜索前排竞品 (Search-Store) 提取标题词频
-    cmd_search = ["app-store-pp-cli", "search-store", seed_keyword, "--country", country, "--limit", "15", "--agent"]
+    cmd_search = [
+        "app-store-pp-cli", "search-store", seed_keyword,
+        "--country", country,
+        "--limit", "15",
+        "--rate-limit", str(rate_limit),
+        "--agent"
+    ]
     out_search = run_command(cmd_search)
     competitor_titles = []
     if out_search:
@@ -82,7 +99,6 @@ def build_aso_matrix(seed_keyword, country="cn", brand_name=""):
     brand = brand_name if brand_name else "我的应用"
     print("✨ 4. 独立开发者 ASO 推荐组合方案 (严格 ≤30 字符):")
     
-    # 方案 A: 品牌 + 核心功能 + 场景
     plan_a_title = f"{brand} - {seed_keyword}"
     if hot_keywords:
         plan_a_sub = f"{hot_keywords[0]}与{hot_keywords[1] if len(hot_keywords) > 1 else '工具'}的首选"
@@ -93,7 +109,6 @@ def build_aso_matrix(seed_keyword, country="cn", brand_name=""):
     print(f"     - 主标题: {plan_a_title[:30]} (字符数: {len(plan_a_title)})")
     print(f"     - 副标题: {plan_a_sub[:30]} (字符数: {len(plan_a_sub)})")
 
-    # 方案 B: 情绪/卖点 + 核心词
     if hot_keywords and len(hot_keywords) >= 2:
         plan_b_title = f"{brand}: {seed_keyword}{hot_keywords[0]}"
         plan_b_sub = f"轻量{hot_keywords[1]}·无广告无后台"
@@ -106,13 +121,15 @@ def build_aso_matrix(seed_keyword, country="cn", brand_name=""):
     print(f"     - 副标题: {plan_b_sub[:30]} (字符数: {len(plan_b_sub)})")
 
 def main():
-    parser = argparse.ArgumentParser(description="App Store 独立开发者 ASO 矩阵生成器")
+    parser = argparse.ArgumentParser(description="App Store 独立开发者 ASO 矩阵生成器 (带速率平滑控制)")
     parser.add_argument("keyword", help="核心种子关键词 (如 '背单词', '收纳', '记账')")
     parser.add_argument("--country", default="cn", help="Storefront 国家代码 (默认 cn)")
     parser.add_argument("--brand", default="", help="自有品牌名或产品名预设 (可选)")
+    parser.add_argument("--delay", type=float, default=1.5, help="请求间平滑等待秒数 (默认 1.5s)")
+    parser.add_argument("--rate-limit", default="0.5", help="CLI 内部请求限频 (默认 0.5 即 2秒/次)")
     args = parser.parse_args()
 
-    build_aso_matrix(args.keyword, args.country, args.brand)
+    build_aso_matrix(args.keyword, args.country, args.brand, args.delay, args.rate_limit)
 
 if __name__ == "__main__":
     main()

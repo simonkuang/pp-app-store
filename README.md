@@ -8,7 +8,7 @@
 
 专为 **AI Coding Agent** 与 **独立开发者（Indie Hacker / OPC 一人公司）** 封装的 Apple App Store 市场挖掘与情报分析套件。
 
-底层基于由 Go 语言编写的高性能独立二进制 `app-store-pp-cli`（出自开源项目 [mvanhorn/printing-press-library](https://github.com/mvanhorn/printing-press-library)），**无需 Apple 开发者账号、免 API Key 鉴权**，原生内置 SQLite 历史数据库。本技能项目在此基础上，进一步引申并封装了专为独立开发者设计的**差评需求挖掘、内购定价对标、ASO 黄金词阵生成**等实战工作流。
+底层基于由 Go 语言编写的高性能独立二进制 `app-store-pp-cli`（出自开源项目 [mvanhorn/printing-press-library](https://github.com/mvanhorn/printing-press-library)），**无需 Apple 开发者账号、免 API Key 鉴权**，原生内置 SQLite 历史数据库。本技能项目在此基础上，进一步引申并封装了专为独立开发者设计的**差评需求挖掘、内购定价对标、ASO 黄金词阵生成**等实战工作流，并内置了针对苹果公开接口的**速率控制与重试退避保护**。
 
 ---
 
@@ -16,6 +16,7 @@
 
 * 🚀 **零外部运行时依赖**：单文件 Go 编译产物，秒级冷启动，免去复杂的 Python/Node 环境搭建。
 * 🔑 **免认证即开即用**：直接调用 Apple 官方公开接口，无账户封禁或密钥过期困扰。
+* ⏱️ **内置双层速率平滑保护**：底层 CLI 支持 `--rate-limit` 与 429 Retry-After；上层 Python 脚本默认集成 1.5s~2s 间隔平滑机制，**严格遵守单 IP ≤20~30次/分的苹果公认安全经验阈值**。
 * 🗄️ **通用 SQLite 本地时序库**：所有查询自动落盘（通用路径：`~/.local/data/pp-app-store.db` 或标准 XDG 数据目录），无任何特定机器路径依赖，支持时序排名异动（`movers`）、拉力评估（`traction`）与重大更新影响分析（`impact`）。
 * 🤖 **原生 Agent 友好**：所有命令原生支持 `--agent` 标志，输出结构化 JSON，无终端染色字符或交互式阻塞。
 * 🛠️ **独立开发者专项增强**：内置开箱即用的高价值工作流脚本（差评寻宝、IAP 定价测算、ASO 词库构建）。
@@ -48,6 +49,19 @@ chmod +x install.sh
   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
   .\install.ps1
   ```
+
+---
+
+## ⚠️ 苹果免鉴权接口频控与安全指南 (Rate Limiting)
+
+Apple App Store 的免鉴权接口（iTunes Search / Lookup / Reviews）虽然免费开放，但受 CDN 与边缘防火墙严格监控。
+
+* **网络经验阈值**：
+  - **安全频率**：单 IP **≤ 20~30 次/分钟**（即每次调用间隔保持在 **≥ 1.5~2 秒**）。
+  - **突发熔断**：短时间内突发 > 15 次并发，极易触发 `HTTP 403 / 429`，导致该 IP 遭遇数小时临时拉黑。
+* **双层防封设计**：
+  1. **底层 CLI 进程内限速**：支持 `--rate-limit 0.5`（即 2 秒 1 次），且内置针对 429 的 `Retry-After` 自动退避。
+  2. **上层脚本跨调用平滑**：本项目内置的 `scripts/` 工具默认加入请求间延迟（`--delay 1.5`）与指数退避重试，杜绝并发轰炸。
 
 ---
 
@@ -124,7 +138,7 @@ chmod +x install.sh
 ├── install.sh          # Linux & macOS 跨平台通用自动安装脚本
 ├── install.ps1         # Windows PowerShell 通用自动安装脚本
 ├── install.cmd         # Windows 批处理双击安装向导
-└── scripts/            # 独立开发者专属复合工作流脚本
+└── scripts/            # 独立开发者专属复合工作流脚本（内置控速与退避机制）
     ├── review_miner.py # 差评寻宝与痛点提取器
     ├── iap_analyzer.py # 商业化内购定价梯队测算器
     └── aso_builder.py  # ASO 黄金标题与关键词矩阵构建器
