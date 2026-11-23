@@ -1,0 +1,33 @@
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Runtime SQLite Database & Caches
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.log
+cache/
+receipts/
+
+# Local Downloaded Binaries & Shims
+bin/
+*.exe
+app-store-pp-cli*
+pp-app-store*
+!install.sh
+!install.cmd
+!install.ps1
+
+# Editor & IDE artifacts
+.vscode/
+.idea/
+*.swp
+*~
