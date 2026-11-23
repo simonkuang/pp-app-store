@@ -15,6 +15,7 @@ description: Apple App Store data mining, market intelligence, competitor teardo
 
 | 调研目标 | 推荐执行指令 | 输出效果 |
 | :--- | :--- | :--- |
+| **查询环境与频控状态** | `python3 ~/.agents/skills/pp-app-store/scripts/status.py` | 查看苹果接口连通性、当前 Rate Limit 状态与 SQLite 缓存规模 |
 | **挖掘竞品差评痛点** | `python3 ~/.agents/skills/pp-app-store/scripts/review_miner.py <APP_ID> --country cn` | 自动筛选低星评价，聚类核心吐槽词与新功能机会点 |
 | **拆解内购定价模型** | `python3 ~/.agents/skills/pp-app-store/scripts/iap_analyzer.py <APP_ID> --country cn` | 拆解周/月/年订阅及终身买断，给出定价阶梯建议 |
 | **生成 ASO 标题方案** | `python3 ~/.agents/skills/pp-app-store/scripts/aso_builder.py "<关键词>" --country cn` | 提取联想词与竞品词频，生成 ≤30 字符的主副标题组合 |
@@ -23,7 +24,9 @@ description: Apple App Store data mining, market intelligence, competitor teardo
 | **查询分类实时榜单** | `app-store-pp-cli top --country cn --genre 6014 --limit 30 --agent` | 拉取游戏类（6014）或其他分类的免费榜大盘 |
 | **对比两款同类竞品** | `app-store-pp-cli compare <APP_1> <APP_2> --country cn --agent` | 横向对比两款应用的价格、评分、体积与版本更新 |
 
-> 提示：`--country` 参数默认对应目标地区（中国区用 `cn`，美国区用 `us`，日本区用 `jp`）。CLI 命令添加 `--agent` 可获得标准紧凑 JSON。
+> 提示：
+> 1. 上述指令在执行时已完全内置频率保护，Agent 无需额外干预底层速率。
+> 2. `--country` 参数默认对应目标地区（中国区用 `cn`，美国区用 `us`，日本区用 `jp`）。CLI 命令添加 `--agent` 可获得标准紧凑 JSON。
 
 ---
 
@@ -53,6 +56,13 @@ description: Apple App Store data mining, market intelligence, competitor teardo
 2. **提供两套策略方案**：
    - **功能直觉型**：品牌名 + 核心功能词 + 场景，提升自然搜索命中率。
    - **卖点突出型**：品牌名 + 核心差异点（如极简、无广告、买断），吸引高意向用户点击。
+
+---
+
+### 任务 4：环境体检与缓存状态查询
+当用户询问当前数据挖掘工具是否正常工作，或查询本地缓存了多少应用数据时：
+1. 直接运行：`python3 ~/.agents/skills/pp-app-store/scripts/status.py`
+2. 根据输出简要向用户反馈 API 连通性、当前频控健康度与本地数据库统计。
 
 ---
 
