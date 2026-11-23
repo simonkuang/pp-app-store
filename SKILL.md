@@ -5,141 +5,148 @@ description: Apple App Store data mining, market intelligence, competitor teardo
 
 # App Store 数据挖掘与竞品情报指南 (`pp-app-store`)
 
-本技能指导 Agent 利用本地单文件 Go 二进制工具 `app-store-pp-cli`（别名 `pp-app-store`，默认安装于 `~/.local/bin/`），免开发者账号与 API Key、直接调用 Apple App Store 公开接口完成深度的市场情报挖掘。
+本技能指导 Agent 利用单文件 Go 二进制工具 `app-store-pp-cli`（别名 `pp-app-store`，默认安装于 `~/.local/bin/`），免开发者账号与 API Key、直接调用 Apple App Store 公开接口完成深度的市场情报挖掘。
 
 ---
 
-## 一、核心原则与调用规范
+## 一、核心原则与通用环境规范
 
-1. **二进制路径与别名**：
-   - 默认安装路径：`~/.local/bin/app-store-pp-cli`
-   - 兼容别名：`~/.local/bin/pp-app-store`
+1. **二进制与通用目录**：
+   - 二进制路径：`~/.local/bin/app-store-pp-cli`（别名 `pp-app-store`）。
+   - 技能项目路径：通用 Agent 技能目录 `~/.agents/skills/pp-app-store/`。
    - 若系统未检测到该工具，请提示用户运行本技能目录下的 `./install.sh`（Linux/macOS）或 `install.cmd`（Windows）一键安装。
 
-2. **强制使用 `--agent` 参数**：
+2. **通用 SQLite 数据存储规范**：
+   - 默认存储：CLI 默认将时序数据存储于跨平台的标准数据目录中。
+   - 自定义通用路径：若需要指定通用数据库文件，建议统一使用 `--db ~/.local/data/pp-app-store.db`，**严禁在命令中硬编码任何特定用户的机器绝对路径**。
+
+3. **强制使用 `--agent` 参数**：
    - 对任何子命令添加 `--agent` 标志，会自动启用 `--json --compact --no-input --no-color`，以结构化 JSON 输出结果，杜绝交互式提示与终端染色代码。
 
-3. **国家地区 Storefront (`--country`)**：
+4. **国家地区 Storefront (`--country`)**：
    - 默认国家代码为 `us`（美国区）。
    - 分析国内市场或特定区域时，**务必显式指定国家代码**，如中国区 `--country cn`、日本区 `--country jp`、韩国区 `--country kr`、英国区 `--country gb`。
 
-4. **本地 SQLite 自动落盘与时序分析**：
-   - 工具运行产生的数据会自动缓存在本地 SQLite 数据库（`~/.local/share/app-store-pp-cli/data.db`）。
-   - 连续抓取后，可直接调用 `movers`（排名异动）、`traction`（增长拉力）、`impact`（更新影响）进行时序对比。
-
 ---
 
-## 二、高频挖掘场景与命令配方 (Playbooks)
-
-### 场景 1：竞品全景拆解（Listing / 商业化 / 评分）
-
-当需要对某款竞品应用（已知 App ID，如微信 `414478124` 或王者荣耀 `989673964`）进行全方位体检时：
+## 二、基础原子接口速查 (Native Primitives)
 
 ```bash
-# 1. 基础元数据、副标题、开发者与实时榜单排名
-app-store-pp-cli app <APP_ID> --country cn --agent
-
-# 2. 深度全景（包含应用描述、截图、隐私标签、应用能力、内购价格）
-app-store-pp-cli app <APP_ID> --full --country cn --agent
-
-# 3. 商业化分析：抓取前 10 大内购项目（IAP）与定价梯度
-app-store-pp-cli iap <APP_ID> --country cn --agent
-
-# 4. 用户口碑：星级分布直方图与真实评分量
-app-store-pp-cli ratings <APP_ID> --histogram --country cn --agent
-
-# 5. 更新节奏：获取最近 25 次版本更新日志与发布时间
-app-store-pp-cli versions <APP_ID> --country cn --agent
-```
-
----
-
-### 场景 2：用户评价挖掘与差评痛点分析 (Voice of Customer)
-
-通过用户真实反馈洞察核心抱怨、功能缺陷及需求痛点：
-
-```bash
-# 1. 评论智能摘要：生成星级分布、按版本的评分走势及高频投诉词
-app-store-pp-cli review-digest <APP_ID> --country cn --agent
-
-# 2. 抓取最新与最有价值评论（自动去重并入库）
-app-store-pp-cli reviews <APP_ID> --country cn --limit 50 --agent
-
-# 3. 本地离线检索已落盘的评论（支持关键词检索，如闪退、卡顿、扣费）
-app-store-pp-cli search "闪退" --country cn
-```
-
----
-
-### 场景 3：大盘榜单扫描与黑马产品发现 (Charts & Breakouts)
-
-挖掘细分赛道正处于上升期的潜力产品：
-
-```bash
-# 1. 查询分类及其 Genre ID（游戏类：6014，动作类：7001，益智类：7012，效率类：6007 等）
+# 1. 榜单与分类
+app-store-pp-cli top --country cn --genre 6014 --chart top-free --limit 50 --agent
 app-store-pp-cli categories list
 app-store-pp-cli categories games
 
-# 2. 拉取特定分类实时榜单（支持 top-free / top-paid / top-grossing，默认最多 200 条）
-app-store-pp-cli top --country cn --genre 6014 --chart top-free --limit 50 --agent
+# 2. 单品画像与元数据
+app-store-pp-cli app <APP_ID> --country cn --agent
+app-store-pp-cli app <APP_ID> --full --country cn --agent
+app-store-pp-cli ratings <APP_ID> --histogram --country cn --agent
 
-# 3. 榜单异动扫描（对比最近两次快照的进榜、掉榜、攀升应用）
+# 3. 商业化与版本
+app-store-pp-cli iap <APP_ID> --country cn --agent
+app-store-pp-cli versions <APP_ID> --country cn --agent
+
+# 4. 评价挖掘
+app-store-pp-cli review-digest <APP_ID> --country cn --agent
+app-store-pp-cli reviews <APP_ID> --country cn --limit 50 --agent
+
+# 5. ASO 与搜索
+app-store-pp-cli search-store "<KEYWORD>" --country cn --limit 30 --agent
+app-store-pp-cli suggest "<KEYWORD>" --country cn --agent
+app-store-pp-cli keyword-rank "<KEYWORD>" --app <APP_ID> --country cn --agent
+
+# 6. 时序异动与黑马发现 (依赖本地 SQLite 历史)
 app-store-pp-cli movers --country cn --genre 6014 --agent
-
-# 4. 全球跨市场黑马发现（查找同时在多个国家/地区冲榜的产品）
 app-store-pp-cli breakouts --genre 6014 --min-markets 2 --since 7d --agent
-
-# 5. 查看 Today 标签页精选故事与被推荐应用
-app-store-pp-cli featured --country cn --agent
-```
-
----
-
-### 场景 4：ASO 搜索优化与关键词情报 (ASO & Keyword Intelligence)
-
-```bash
-# 1. 模拟 App Store 搜索下拉联想词（获取高价值长尾词）
-app-store-pp-cli suggest "小游戏" --country cn --agent
-
-# 2. 按关键词进行 App Store 实况搜索
-app-store-pp-cli search-store "收纳" --country cn --limit 30 --agent
-
-# 3. 查询特定应用在关键词搜索结果中的实时排名位置，并落盘跟踪
-app-store-pp-cli keyword-rank "消除" --app <APP_ID> --country cn --agent
-
-# 4. 查看某个关键词在历史跟踪中的排名变动趋势
-app-store-pp-cli keyword-history "消除" --country cn --agent
-```
-
----
-
-### 场景 5：增长趋势与竞品横向对比 (Traction & Comparison)
-
-```bash
-# 1. 评估需求拉力（基于评分新增速率、榜单排名等综合代理指标，按月/年汇总）
 app-store-pp-cli traction <APP_ID> --period monthly --country cn --agent
-
-# 2. 版本重大更新/改名/调价前后的效果对比（Impact 分析）
-app-store-pp-cli impact <APP_ID> --date 2026-11-01 --country cn --agent
-
-# 3. 多款同类竞品同台横向对比（对比评分、价格、包体大小、版本）
-app-store-pp-cli compare <APP_ID_1> <APP_ID_2> --country cn --agent
-
-# 4. 查看苹果官方算法推荐的“类似应用”列表
-app-store-pp-cli similar <APP_ID> --country cn --agent
+app-store-pp-cli compare <APP_1> <APP_2> --country cn --agent
 ```
 
 ---
 
-## 三、Agent 执行产出规范
+## 三、独立开发者深度衍生工作流 (Indie Workflows)
 
-当用户要求做 App Store 调研或竞品分析时，Agent 应遵循以下流程交付结构化报告：
+结合独立开发者（Indie Hacker / OPC 一人公司）的实际立项与商业化痛点，本技能在基础接口之上引申并封装了以下 5 个高价值综合工作流：
 
-1. **定位产品**：先通过 `search-store` 确认目标产品的 `appId` 及官方名称。
-2. **多维提取**：组合 `app`（基础信息）、`iap`（商业化模式）、`ratings`/`review-digest`（用户口碑），必要时用 `similar` 找齐 2-3 款主要竞品。
-3. **输出报告结构建议**：
-   - **基础画像**：应用名、副标题、开发者、当前榜单排位、上线及更新日期。
-   - **商业化模型**：内购项价格分布（免费内购/订阅制/买断制），定价策略分析。
-   - **用户口碑洞察**：评分分布健康度，正面评价焦点 vs 负面吐槽/痛点诉求。
-   - **ASO 与获客策略**：主副标题关键词覆盖度、相关搜索排名表现。
-   - **机会与建议**：基于竞品缺陷提炼差异化切入点。
+### 1. “差评寻宝”需求挖掘法 (Negative Review Feature Mining)
+* **痛点场景**：做新产品不知道做什么功能，大厂成熟竞品功能繁杂但留有死角。
+* **衍生逻辑**：拉取竞品评论，专门过滤出 `rating <= 2` 的低星差评，聚类提取用户反复抱怨的“核心痛点”、“收费太黑”与“未满足功能请求”。
+* **执行命令**：
+  ```bash
+  # 直接调用技能内置扩展脚本：
+  python3 ~/.agents/skills/pp-app-store/scripts/review_miner.py <APP_ID> --country cn --limit 100 --max-rating 2
+  ```
+* **产出物**：
+  - 高频吐槽词 TOP 榜（如闪退、强制广告、贵、缺少导入功能）。
+  - 典型痛点原声反馈（提炼做差异化新产品的首发功能清单）。
+
+---
+
+### 2. 商业化模式与内购定价梯队测算 (IAP Pricing Ladder)
+* **痛点场景**：不知道该定多少钱，是在中国区推年订阅还是推终身买断？
+* **衍生逻辑**：抓取目标应用的 Top 10 内购项，自动解析周期性订阅（周/月/年）与非消耗型买断（Lifetime），计算年费折扣率与客单价中位数。
+* **执行命令**：
+  ```bash
+  # 直接调用技能内置扩展脚本：
+  python3 ~/.agents/skills/pp-app-store/scripts/iap_analyzer.py <APP_ID> --country cn
+  ```
+* **产出物**：
+  - 变现模型判定（纯订阅型 / 订阅+终身买断混合型 / 消耗性代币型）。
+  - 独立开发者定价对标建议（如何用“买断制”击穿纯订阅竞品的护城河）。
+
+---
+
+### 3. ASO 黄金标题与关键词矩阵生成 (ASO Keyword Matrix)
+* **痛点场景**：没有买量预算，完全依赖自然搜索流量，如何把苹果标题的 30 个字符打满？
+* **衍生逻辑**：输入核心种子词，自动通过 `suggest` 获取高搜索意图联想词，同时扫描前 10 名竞品的主副标题高频词，组装出符合苹果字符硬约束的推荐方案。
+* **执行命令**：
+  ```bash
+  # 直接调用技能内置扩展脚本：
+  python3 ~/.agents/skills/pp-app-store/scripts/aso_builder.py "<核心词>" --country cn --brand "<品牌名>"
+  ```
+* **产出物**：
+  - 搜索下拉高价值长尾词列表。
+  - 严格限制在 30 字符以内的「功能直觉型」与「独立卖点型」标题 + 副标题组合。
+
+---
+
+### 4. 蓝海细分赛道与独立黑马探测 (Indie Niche & Blue Ocean Scan)
+* **痛点场景**：如何避开买量大厂，找到小团队做出来的轻量级、高口碑黑马产品？
+* **衍生逻辑**：
+  1. 调用 `top` 拉取细分二级分类（如 `7012` 益智、`6007` 效率、`6017` 教育）的免费或付费榜前 100 名。
+  2. 过滤掉大厂（腾讯、网易、字节等），锁定评分高于 4.6 且评价数在 500~5000 之间的中小型独立应用。
+  3. 通过 `traction` 与 `movers` 验证其近期是否有持续增长。
+* **执行命令**：
+  ```bash
+  app-store-pp-cli top --country cn --genre 7012 --chart top-free --limit 100 --agent
+  ```
+
+---
+
+### 5. 跨地区出海潜力与客单价套利 (Global Market Arbitrage)
+* **痛点场景**：同一款产品在国内变现难，在海外能否卖出 5~10 倍单价？
+* **衍生逻辑**：横向比对目标应用在中国区 (`cn`)、美国区 (`us`)、日本区 (`jp`) 的内购定价与评价热度，测算各地区实际客单价。
+* **执行命令**：
+  ```bash
+  # 对比各地区定价
+  app-store-pp-cli iap <APP_ID> --country cn --agent
+  app-store-pp-cli iap <APP_ID> --country us --agent
+  app-store-pp-cli iap <APP_ID> --country jp --agent
+  ```
+
+---
+
+## 四、Agent 执行交付规范
+
+当用户询问 App Store 竞品调研或赛道分析时，Agent 应遵循以下流程产出深度分析报告：
+
+1. **确定目标**：通过 `search-store` 确认目标产品的 `appId`。
+2. **多维数据组合调用**：
+   - 基础画像：`app --agent` + `ratings --histogram --agent`
+   - 商业化梯队：`iap_analyzer.py` 或 `iap --agent`
+   - 差评寻宝：`review_miner.py` 或 `reviews --agent`
+3. **交付报告标准模块**：
+   - **基础画像与当前大盘**（包体大小、最新版本、当前榜单排名）
+   - **商业化模式解析**（订阅周期、定价梯度、是否存在买断机会）
+   - **用户真实口碑与致命痛点**（竞品做得很烂、用户在差评里求的功能）
+   - **独立开发者破局建议**（功能取舍建议、定价策略、ASO 命名参考）
